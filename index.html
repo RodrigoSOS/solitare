@@ -209,7 +209,6 @@
                 gap: 8px;
             }
         }
-
     </style>
 </head>
 
@@ -359,6 +358,13 @@
         window.addEventListener("beforeunload", saveGame);
         window.addEventListener("contextmenu", e => e.preventDefault())
         const STACK_OFFSET = window.innerWidth < 500 ? 20 : 28;
+        /* =========================
+           PROPORTIONS
+        ========================= */
+        const CARD_RATIO = 120 / 80; // altura / largura
+        const MIN_CARD_W = 42;
+        const MAX_CARD_W = 80;
+        const PILE_GAP = 12;
 
         /* =========================
            CONSTANTES
@@ -1157,7 +1163,7 @@
                 document.getElementById("hintSelect").value;
 
             document.getElementById("newGameModal").style.display = "none";
-
+            updateCardSize();
             newGame();
         }
 
@@ -1198,7 +1204,7 @@
         });
 
         /* =========================
-           UI
+           Interface
         ========================= */
         function toggleMenu() {
             document.getElementById("ui").classList.toggle("hidden");
@@ -1210,7 +1216,33 @@
         function closeModal(id) {
             document.getElementById(id).style.display = "none";
         }
+        function updateCardSize() {
+            const game = document.getElementById("game");
 
+            const padding = 20; // padding lateral do game
+            const availableWidth = window.innerWidth - padding;
+
+            // topo: stock + waste + spacer + 4 foundations = 6 pilhas reais
+            const pileCount = 6;
+
+            // gap total entre pilhas
+            const totalGaps = (pileCount - 1) * PILE_GAP;
+
+            let cardW = Math.floor(
+                (availableWidth - totalGaps) / pileCount
+            );
+
+            cardW = Math.max(MIN_CARD_W, Math.min(MAX_CARD_W, cardW));
+            const cardH = Math.floor(cardW * CARD_RATIO);
+
+            document.documentElement.style.setProperty("--card-w", cardW + "px");
+            document.documentElement.style.setProperty("--card-h", cardH + "px");
+        }
+
+        window.addEventListener("resize", () => {
+            updateCardSize();
+            render();
+        });
 
     </script>
 
