@@ -16,12 +16,21 @@
 
         :root[data-theme="red"] {}
 
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             margin: 0;
             background: #0f5132;
             font-family: sans-serif;
             color: white;
             touch-action: none;
+
+            display: flex;
+            flex-direction: column;
         }
 
         #ui {
@@ -37,12 +46,21 @@
 
         #game {
             padding: 10px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
+
 
         .row {
             display: flex;
             gap: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
+        }
+
+        #game .row:last-child {
+            flex: 1;
+            align-items: flex-start;
         }
 
         .pile {
@@ -55,7 +73,7 @@
         }
 
         .tableau {
-            min-height: calc(var(--card-h) * 6);
+            flex: 1;
         }
 
         .card {
@@ -182,14 +200,16 @@
                 --card-w: 52px;
                 --card-h: 78px;
             }
-        }
 
-        @media (max-width: 500px) {
+            .tableau .card {
+                transform-origin: top center;
+            }
+
             .row {
                 gap: 8px;
             }
-
         }
+
     </style>
 </head>
 
@@ -338,6 +358,8 @@
     <script>
         window.addEventListener("beforeunload", saveGame);
         window.addEventListener("contextmenu", e => e.preventDefault())
+        const STACK_OFFSET = window.innerWidth < 500 ? 20 : 28;
+
         /* =========================
            CONSTANTES
         ========================= */
@@ -460,7 +482,7 @@
                 const pile = document.querySelector(`.tableau[data-col="${i}"]`);
                 col.forEach((c, idx) => {
                     const el = createCardElement(c);
-                    el.style.top = (idx * 28) + "px";
+                    el.style.top = (idx * STACK_OFFSET) + "px";
                     pile.appendChild(el);
                 });
             });
