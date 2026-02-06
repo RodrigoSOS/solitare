@@ -3,7 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+      content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
     <title>Paciência</title>
 
     <style>
@@ -74,6 +76,8 @@
 
         .tableau {
             flex: 1;
+            height: calc(100vh - 140px);
+            /* levemente maior */
         }
 
         .card {
@@ -218,6 +222,9 @@
     <button id="autoFinishBtn" onclick="autoFinishGame()" style="display:none">
         🏁 Finalizar jogo
     </button>
+    <button onclick="toggleFullscreen()" style="position:fixed; bottom:60px; right:10px; z-index:4000;">
+        ⛶
+    </button>
 
 
     <div id="ui">
@@ -236,6 +243,7 @@
             <button onclick="openModal('optionsModal')">⚙️</button>
             <button onclick="openModal('aboutModal')">ℹ️</button>
         </div>
+
 
     </div>
 
@@ -1250,7 +1258,51 @@
         if ("serviceWorker" in navigator) {
             navigator.serviceWorker.register("service-worker.js");
         }
+        function toggleFullscreen() {
+            const doc = document;
+            const el = document.documentElement;
+
+            if (
+                !doc.fullscreenElement &&
+                !doc.webkitFullscreenElement &&
+                !doc.msFullscreenElement
+            ) {
+                if (el.requestFullscreen) {
+                    el.requestFullscreen();
+                } else if (el.webkitRequestFullscreen) {
+                    el.webkitRequestFullscreen(); // Safari
+                } else if (el.msRequestFullscreen) {
+                    el.msRequestFullscreen(); // Edge antigo
+                }
+            } else {
+                if (doc.exitFullscreen) {
+                    doc.exitFullscreen();
+                } else if (doc.webkitExitFullscreen) {
+                    doc.webkitExitFullscreen();
+                } else if (doc.msExitFullscreen) {
+                    doc.msExitFullscreen();
+                }
+            }
+        }
+        function onFullscreenChange() {
+            updateCardSize();
+            updatePileHeight();
+            render();
+        }
+
+        document.addEventListener("fullscreenchange", onFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+        let fullscreenTried = false;
+
+document.addEventListener("pointerdown", () => {
+  if (!fullscreenTried && window.innerWidth < 800) {
+    fullscreenTried = true;
+    toggleFullscreen();
+  }
+});
+
     </script>
+
 </body>
 
 
