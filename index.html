@@ -745,46 +745,46 @@
             }
             return { type: "waste" };
         }
-function handleCardClick(card) {
-    // mesma carta clicada novamente → tenta auto-move
-    if (selection && selection.card.id === card.id) {
-        // cria dragData temporário com stack e source da seleção
-        dragData = {
-            stack: selection.stack,
-            source: selection.source
-        };
+        function handleCardClick(card) {
+            // mesma carta clicada novamente → tenta auto-move
+            if (selection && selection.card.id === card.id) {
+                // cria dragData temporário com stack e source da seleção
+                dragData = {
+                    stack: selection.stack,
+                    source: selection.source
+                };
 
-        // tenta mover para foundation
-        for (const pile of document.querySelectorAll(".foundation")) {
-            if (canDropOn(pile)) {
-                attemptMove(pile);
-                clearSelection();
-                render();
-                saveGame();
-                dragData = null;
+                // tenta mover para foundation
+                for (const pile of document.querySelectorAll(".foundation")) {
+                    if (canDropOn(pile)) {
+                        attemptMove(pile);
+                        clearSelection();
+                        render();
+                        saveGame();
+                        dragData = null;
+                        return;
+                    }
+                }
+
+                // tenta mover para tableau
+                for (const pile of document.querySelectorAll(".tableau")) {
+                    if (canDropOn(pile)) {
+                        attemptMove(pile);
+                        clearSelection();
+                        render();
+                        saveGame();
+                        dragData = null;
+                        return;
+                    }
+                }
+
+                dragData = null; // não encontrou movimento
                 return;
             }
+
+            // nova seleção
+            selectCard(card);
         }
-
-        // tenta mover para tableau
-        for (const pile of document.querySelectorAll(".tableau")) {
-            if (canDropOn(pile)) {
-                attemptMove(pile);
-                clearSelection();
-                render();
-                saveGame();
-                dragData = null;
-                return;
-            }
-        }
-
-        dragData = null; // não encontrou movimento
-        return;
-    }
-
-    // nova seleção
-    selectCard(card);
-}
 
 
         /* =========================
@@ -901,54 +901,36 @@ function handleCardClick(card) {
         }
 
         function moveToFoundation(suit) {
-            const stack = dragData.stack;
-            const card = stack[0];
-            const pile = foundations[suit];
+    const { removedStack, flipped } = removeFromSource();
+    if (!removedStack.length) return;
 
-            if (
-                stack.length === 1 &&
-                card.suit === suit &&
-                (
-                    (pile.length === 0 && card.value === 1) ||
-                    (pile.length && pile[pile.length - 1].value === card.value - 1)
-                )
-            ) {
-                const flipped = removeFromSource();
-                pile.push(card);
+    foundations[suit].push(...removedStack);
 
-                recordMove({
-                    type: "move",
-                    from: dragData.source,
-                    to: { type: "foundation", suit },
-                    cards: [card],
-                    flipped
-                });
-            }
-        }
+    recordMove({
+        type: "move",
+        from: dragData.source,
+        to: { type: "foundation", suit },
+        cards: removedStack,
+        flipped
+    });
+}
+
+function moveToTableau(colIndex) {
+    const { removedStack, flipped } = removeFromSource();
+    if (!removedStack.length) return;
+
+    tableau[colIndex].push(...removedStack);
+
+    recordMove({
+        type: "move",
+        from: dragData.source,
+        to: { type: "tableau", index: colIndex },
+        cards: removedStack,
+        flipped
+    });
+}
 
 
-        function moveToTableau(colIndex) {
-            const col = tableau[colIndex];
-            const card = dragData.stack[0];
-
-            if (
-                (col.length === 0 && card.value === 13) ||
-                (col.length &&
-                    cardColor(card) !== cardColor(col[col.length - 1]) &&
-                    card.value === col[col.length - 1].value - 1)
-            ) {
-                const flipped = removeFromSource();
-                col.push(...dragData.stack);
-
-                recordMove({
-                    type: "move",
-                    from: dragData.source,
-                    to: { type: "tableau", index: colIndex },
-                    cards: dragData.stack,
-                    flipped
-                });
-            }
-        }
 
         function selectCard(card) {
             clearSelection();
@@ -1022,23 +1004,27 @@ function handleCardClick(card) {
         function removeFromSource() {
             const src = dragData.source;
             let flipped = null;
+            let removedStack = [];
 
             if (src.type === "tableau") {
-                tableau[src.index].splice(src.pos);
                 const col = tableau[src.index];
+                // remove o stack da posição exata
+                removedStack = col.slice(src.pos);
+                col.splice(src.pos); // agora remove do tableau
 
+                // verifica se precisa virar a carta de baixo
                 if (col.length && !col[col.length - 1].faceUp) {
                     col[col.length - 1].faceUp = true;
                     flipped = col[col.length - 1];
                 }
+            } else if (src.type === "waste") {
+                removedStack = [waste.pop()];
             }
 
-            if (src.type === "waste") {
-                waste.pop();
-            }
-
-            return flipped;
+            return { removedStack, flipped };
         }
+
+
 
         /* =========================
            UNDO & REDO
