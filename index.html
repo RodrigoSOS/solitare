@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport"
-      content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
     <title>Paciência</title>
 
@@ -124,6 +124,16 @@
             pointer-events: none;
             z-index: 2000;
             transform: scale(1.03);
+        }
+
+        .card.selected {
+            outline: 3px solid #4ade80;
+            box-shadow: 0 0 12px rgba(74, 222, 128, 0.9);
+        }
+
+        .pile.selected-drop {
+            border-color: #4ade80;
+            box-shadow: 0 0 12px rgba(74, 222, 128, 0.9);
         }
 
 
@@ -305,6 +315,15 @@
 
             <br><br>
 
+            <label>
+                Auto tela cheia:
+                <button onclick="toggleAutoFullscreen()">
+                    <span id="autoFullscreenLabel">ON</span>
+                </button>
+            </label>
+
+            <br><br>
+
             <button onclick="closeModal('optionsModal')">Fechar</button>
         </div>
     </div>
@@ -387,12 +406,13 @@
         };
 
         let gameConfig = {
-            drawCount: 3,
+            drawCount: 1,
             hintMode: HINT_MODE.VALID_ONLY
+
         };
 
         gameConfig.doubleClickMove = true;
-
+        gameConfig.autoFullscreen = true;
 
         /* =========================
            ESTADO DO JOGO
@@ -407,6 +427,12 @@
 
         let undoStack = [];
         let redoStack = [];
+        let selection = null;
+        let dragData = null;
+        let isDragging = false;
+        let dragStarted = false;
+
+        const DRAG_THRESHOLD = 6; // px
 
 
         /* =========================
@@ -500,6 +526,28 @@
                     pile.appendChild(el);
                 });
             });
+            bindPileClick();
+        }
+        function bindPileClick() {
+            document.querySelectorAll(".pile").forEach(pile => {
+                pile.onpointerup = e => {
+                    if (!selection) return;
+
+                    if (canDropStackOn(selection.stack, selection.source, pile)) {
+                        dragData = {
+                            stack: selection.stack,
+                            source: selection.source
+                        };
+
+                        attemptMove(pile);
+                        clearSelection();
+                        render();
+                        saveGame();
+                    } else {
+                        clearSelection();
+                    }
+                };
+            });
         }
 
         function createCardElement(card) {
@@ -540,149 +588,142 @@
         /* =========================
            DRAG & DROP
         ========================= */
-        let dragData = null;
-        let lastClickTime = 0;
-        let lastClickCardId = null;
-
         function cleanupDragStacks() {
             document.querySelectorAll(".drag-stack").forEach(el => el.remove());
         }
 
         function enableDrag(el, card) {
-            let startX, startY, x = 0, y = 0;
+            let startX, startY;
 
             el.onpointerdown = e => {
-                cleanupDragStacks();
-                // monta dragData PRIMEIRO
+                // 👉 NÃO cria ghost
+                // 👉 NÃO esconde carta
+                // 👉 NÃO mexe em seleção
+
+                startX = e.clientX;
+                startY = e.clientY;
+
+                dragStarted = false;
+                isDragging = false;
+
                 dragData = {
                     card,
                     stack: getStack(card),
                     source: findSource(card),
-                    ghost: null
+                    ghost: null,
+                    originalEls: []
                 };
-
-                if (!dragData.stack.length) return;
-                // esconder cartas originais da pilha
-                dragData.originalEls = [];
-
-                document.querySelectorAll(".card").forEach(el => {
-                    const id = Number(el.dataset.id);
-                    if (dragData.stack.some(c => c.id === id)) {
-                        el.style.visibility = "hidden";
-                        dragData.originalEls.push(el);
-                    }
-                });
-
-                // cria container visual da pilha
-                const ghost = document.createElement("div");
-                ghost.className = "drag-stack";
-                document.body.appendChild(ghost);
-
-                // cria cópias visuais das cartas da pilha
-                dragData.stack.forEach((c, i) => {
-                    const cardEl = createCardElement(c);
-                    cardEl.style.position = "absolute";
-                    cardEl.style.top = (i * 28) + "px";
-                    cardEl.style.left = "0px";
-                    ghost.appendChild(cardEl);
-                });
-
-                dragData.ghost = ghost;
-
-                el.classList.add("dragging");
-
-                const cardW = parseInt(getComputedStyle(document.documentElement)
-                    .getPropertyValue("--card-w"));
-                const cardH = parseInt(getComputedStyle(document.documentElement)
-                    .getPropertyValue("--card-h"));
-
-                dragData.offsetX = cardW / 2;
-                dragData.offsetY = cardH / 2;
-
-                ghost.style.left = (e.clientX - dragData.offsetX) + "px";
-                ghost.style.top = (e.clientY - dragData.offsetY) + "px";
-
 
                 el.setPointerCapture(e.pointerId);
             };
 
-
             el.onpointermove = e => {
-                if (!dragData || !dragData.ghost) return;
+                if (!dragData) return;
+
+                const dx = Math.abs(e.clientX - startX);
+                const dy = Math.abs(e.clientY - startY);
+
+                // 👉 só começa drag se mover de verdade
+                if (!dragStarted && (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD)) {
+                    startDrag(e, el);
+                }
+
+                if (!isDragging) return;
 
                 dragData.ghost.style.left =
                     (e.clientX - dragData.offsetX) + "px";
                 dragData.ghost.style.top =
                     (e.clientY - dragData.offsetY) + "px";
 
-                document.querySelectorAll(".pile").forEach(p => {
-                    p.classList.remove("valid-drop");
-                    if (canDropOn(p)) {
-                        const dragRect = getActiveDragCardRect();
-                        if (!dragRect) return;
-
-                        const pileRect = p.getBoundingClientRect();
-                        if (rectsOverlap(dragRect, pileRect)) {
-                            p.classList.add("valid-drop");
-                        }
-                    }
-                });
-
+                highlightDropTargets();
             };
-
-
 
             el.onpointerup = e => {
                 el.releasePointerCapture(e.pointerId);
-                el.classList.remove("dragging");
 
-                const now = performance.now();
-
-                // ✅ DUPLO CLIQUE MANUAL
-                if (
-                    gameConfig.doubleClickMove &&
-                    lastClickCardId === card.id &&
-                    now - lastClickTime < 300 &&
-                    dragData &&
-                    dragData.stack.length === 1
-                ) {
-                    cleanupDragStacks();
-                    dragData = null;
-
-                    handleAutoMove(card);
-
-                    lastClickTime = 0;
-                    lastClickCardId = null;
-
-                    document.querySelectorAll(".pile")
-                        .forEach(p => p.classList.remove("valid-drop"));
-
+                if (!isDragging) {
+                    // Clique sem arrastar
+                    e.stopPropagation(); // evita que o pointerup do pile sobrescreva
+                    clearSelection();
+                    selectCard(card);
                     return;
                 }
 
-                lastClickTime = now;
-                lastClickCardId = card.id;
-
-                // ✅ DROP NORMAL
+                // Se foi drag → drop
                 handleDrop();
-
-                cleanupDragStacks();
-
-                if (dragData && dragData.originalEls) {
-                    dragData.originalEls.forEach(el => {
-                        el.style.visibility = "visible";
-                    });
-                }
-
-                dragData = null;
-
-                document.querySelectorAll(".pile")
-                    .forEach(p => p.classList.remove("valid-drop"));
-
+                cleanupDrag();
                 render();
             };
+        }
+        function startDrag(e, el) {
+            dragStarted = true;
+            isDragging = true;
 
+            cleanupDragStacks();
 
+            // esconder cartas originais
+            dragData.originalEls = [];
+            document.querySelectorAll(".card").forEach(c => {
+                const id = Number(c.dataset.id);
+                if (dragData.stack.some(s => s.id === id)) {
+                    c.style.visibility = "hidden";
+                    dragData.originalEls.push(c);
+                }
+            });
+
+            // criar ghost
+            const ghost = document.createElement("div");
+            ghost.className = "drag-stack";
+            document.body.appendChild(ghost);
+
+            dragData.stack.forEach((c, i) => {
+                const cardEl = createCardElement(c);
+                cardEl.style.position = "absolute";
+                cardEl.style.top = (i * STACK_OFFSET) + "px";
+                ghost.appendChild(cardEl);
+            });
+
+            dragData.ghost = ghost;
+
+            const cardW = parseInt(getComputedStyle(document.documentElement)
+                .getPropertyValue("--card-w"));
+            const cardH = parseInt(getComputedStyle(document.documentElement)
+                .getPropertyValue("--card-h"));
+
+            dragData.offsetX = cardW / 2;
+            dragData.offsetY = cardH / 2;
+
+            ghost.style.left = (e.clientX - dragData.offsetX) + "px";
+            ghost.style.top = (e.clientY - dragData.offsetY) + "px";
+        }
+
+        function cleanupDrag() {
+            if (dragData?.ghost) {
+                dragData.ghost.remove();
+            }
+
+            if (dragData?.originalEls) {
+                dragData.originalEls.forEach(el => {
+                    el.style.visibility = "visible";
+                });
+            }
+
+            cleanupDragStacks();
+
+            dragData = null;
+            isDragging = false;
+            dragStarted = false;
+
+            document.querySelectorAll(".pile")
+                .forEach(p => p.classList.remove("valid-drop"));
+        }
+
+        function canDropStackOn(stack, source, pile) {
+            const temp = dragData;
+            dragData = { stack, source };
+            const ok = canDropOn(pile);
+            dragData = temp;
+            return ok;
         }
 
         /* =========================
@@ -704,6 +745,47 @@
             }
             return { type: "waste" };
         }
+function handleCardClick(card) {
+    // mesma carta clicada novamente → tenta auto-move
+    if (selection && selection.card.id === card.id) {
+        // cria dragData temporário com stack e source da seleção
+        dragData = {
+            stack: selection.stack,
+            source: selection.source
+        };
+
+        // tenta mover para foundation
+        for (const pile of document.querySelectorAll(".foundation")) {
+            if (canDropOn(pile)) {
+                attemptMove(pile);
+                clearSelection();
+                render();
+                saveGame();
+                dragData = null;
+                return;
+            }
+        }
+
+        // tenta mover para tableau
+        for (const pile of document.querySelectorAll(".tableau")) {
+            if (canDropOn(pile)) {
+                attemptMove(pile);
+                clearSelection();
+                render();
+                saveGame();
+                dragData = null;
+                return;
+            }
+        }
+
+        dragData = null; // não encontrou movimento
+        return;
+    }
+
+    // nova seleção
+    selectCard(card);
+}
+
 
         /* =========================
            DROP & VALIDAÇÃO
@@ -867,6 +949,74 @@
                 });
             }
         }
+
+        function selectCard(card) {
+            clearSelection();
+
+            const stack = getStack(card);
+            if (!stack.length) return;
+
+            selection = {
+                card,
+                stack,
+                source: findSource(card)
+            };
+
+            // highlight cartas
+            stack.forEach(c => {
+                const pile = findPileElement(c);
+                if (pile) pile.classList.add("selected");
+            });
+
+            highlightValidTargets();
+        }
+
+        function findPileElement(card) {
+            return document.querySelector(`.card[data-id="${card.id}"]`);
+        }
+
+        function highlightValidTargets() {
+            document.querySelectorAll(".pile").forEach(pile => {
+                if (canDropStackOn(selection.stack, selection.source, pile)) {
+                    pile.classList.add("selected-drop");
+                }
+            });
+        }
+        function attemptAutoMoveFromSelection() {
+            if (!selection) return;
+
+            dragData = {
+                stack: selection.stack,
+                source: selection.source
+            };
+
+            // Tenta foundation primeiro
+            for (const pile of document.querySelectorAll(".foundation")) {
+                if (canDropOn(pile)) {
+                    attemptMove(pile);
+                    clearSelection();
+                    render();
+                    saveGame();
+                    dragData = null;
+                    return;
+                }
+            }
+
+            // Depois tableau
+            for (const pile of document.querySelectorAll(".tableau")) {
+                if (canDropOn(pile)) {
+                    attemptMove(pile);
+                    clearSelection();
+                    render();
+                    saveGame();
+                    dragData = null;
+                    return;
+                }
+            }
+
+            dragData = null;
+        }
+
 
 
         function removeFromSource() {
@@ -1294,12 +1444,47 @@
         document.addEventListener("webkitfullscreenchange", onFullscreenChange);
         let fullscreenTried = false;
 
-document.addEventListener("pointerdown", () => {
-  if (!fullscreenTried && window.innerWidth < 800) {
-    fullscreenTried = true;
-    toggleFullscreen();
-  }
-});
+        function isFullscreen() {
+            return !!(
+                document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.msFullscreenElement
+            );
+        }
+
+        function tryAutoFullscreen() {
+            if (!gameConfig.autoFullscreen) return;
+            if (isFullscreen()) return;
+
+            toggleFullscreen();
+        }
+        document.addEventListener("pointerdown", (e) => {
+            // evita tentar fullscreen ao clicar em inputs/selects
+            if (
+                e.target.tagName === "SELECT" ||
+                e.target.tagName === "OPTION" ||
+                e.target.tagName === "INPUT"
+            ) return;
+
+            tryAutoFullscreen();
+        });
+        function toggleAutoFullscreen() {
+            gameConfig.autoFullscreen = !gameConfig.autoFullscreen;
+
+            document.getElementById("autoFullscreenLabel").textContent =
+                gameConfig.autoFullscreen ? "ON" : "OFF";
+
+            saveGame();
+        }
+        function clearSelection() {
+            selection = null;
+
+            document.querySelectorAll(".card.selected")
+                .forEach(c => c.classList.remove("selected"));
+
+            document.querySelectorAll(".pile.selected-drop")
+                .forEach(p => p.classList.remove("selected-drop"));
+        }
 
     </script>
 
